@@ -5,6 +5,7 @@ import uuid
 
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 from simulate import simulate
@@ -346,6 +347,88 @@ with tab_sim:
             st.metric("総利益",     f"¥{final['gain']:,.0f}")
             st.metric("総利益率",   f"{final['gain_rate']:.1f}%")
             st.caption(f"年利: {cfg['rate_label']}  |  期間: {cfg['years']}年")
+
+    # ── 時点別ポートフォリオ構成（円グラフ） ─────────────────
+    st.divider()
+    st.subheader("🥧 時点別 ポートフォリオ構成")
+
+    pie_interval = st.radio(
+        "表示間隔",
+        ["5年ごと", "10年ごと"],
+        horizontal=True,
+        key="pie_interval",
+    )
+    step = 5 if pie_interval == "5年ごと" else 10
+
+    # 表示する時点を列挙（step 刻み ＋ 最終年が重複しない場合のみ末尾に追加）
+    time_points = list(range(step, max_years + 1, step))
+    if not time_points:
+        time_points = [max_years]
+    elif time_points[-1] != max_years:
+        time_points.append(max_years)
+
+    # グリッドレイアウト（1行最大4枚）
+    COLS_PER_ROW = 4
+    n_pies = len(time_points)
+    n_cols = min(COLS_PER_ROW, n_pies)
+    n_rows = (n_pies + n_cols - 1) // n_cols
+
+    fig_pie = make_subplots(
+        rows=n_rows,
+        cols=n_cols,
+        specs=[[{"type": "pie"}] * n_cols for _ in range(n_rows)],
+        subplot_titles=[f"{yr}年時点" for yr in time_points],
+    )
+
+    for i, yr in enumerate(time_points):
+        pie_row = i // n_cols + 1
+        pie_col = i % n_cols + 1
+
+        labels, values, pie_colors = [], [], []
+        for res in all_results:
+            row_data = res["df"][res["df"]["year"] == yr]
+            if not row_data.empty:
+                balance = float(row_data.iloc[0]["balance"])
+                if balance > 0:
+                    labels.append(res["cfg"]["name"])
+                    values.append(balance)
+                    pie_colors.append(res["cfg"]["color"])
+
+        if not values:
+            continue
+
+        fig_pie.add_trace(
+            go.Pie(
+                labels=labels,
+                values=values,
+                marker_colors=pie_colors,
+                textinfo="label+percent",
+                textposition="inside",
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    "残高: ¥%{value:,.0f}<br>"
+                    "割合: %{percent}<extra></extra>"
+                ),
+                showlegend=(i == 0),
+            ),
+            row=pie_row,
+            col=pie_col,
+        )
+
+    fig_pie.update_layout(
+        height=max(320, 300 * n_rows),
+        margin=dict(t=60, b=20, l=20, r=20),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=1.04,
+            xanchor="right", x=1,
+        ),
+    )
+    st.plotly_chart(fig_pie, use_container_width=True)
+    st.caption(
+        "※ 各円グラフはその時点で運用中のポートフォリオのみを表示します。"
+        "運用期間が終了したポートフォリオは除外されます。"
+    )
 
     # ── 年次データ詳細（折り畳み） ───────────────────────────
     with st.expander("📋 ポートフォリオ別 年次データ一覧"):
