@@ -442,8 +442,25 @@ with tab_sim:
 
     # ── 最終結果サマリー ─────────────────────────────────────
     st.subheader("最終結果サマリー")
-    sum_cols = st.columns(len(all_results))
-    for col, res in zip(sum_cols, all_results):
+
+    # 合計値を事前計算
+    total_balance   = sum(res["rows"][-1]["balance"]           for res in all_results)
+    total_contrib   = sum(res["rows"][-1]["total_contributed"] for res in all_results)
+    total_gain      = sum(res["rows"][-1]["gain"]              for res in all_results)
+    total_gain_rate = total_gain / total_contrib * 100 if total_contrib > 0 else 0.0
+
+    # 合計列 + 各ポートフォリオ列（合計が一番左）
+    sum_cols = st.columns(1 + len(all_results))
+
+    with sum_cols[0]:
+        st.markdown("**合計**")
+        st.metric("最終残高",   f"¥{total_balance:,.0f}")
+        st.metric("累計投資額", f"¥{total_contrib:,.0f}")
+        st.metric("総利益",     f"¥{total_gain:,.0f}")
+        st.metric("総利益率",   f"{total_gain_rate:.1f}%")
+        st.caption(f"全 {len(all_results)} ポートフォリオの合計")
+
+    for col, res in zip(sum_cols[1:], all_results):
         cfg = res["cfg"]
         final = res["rows"][-1]
         color = cfg["color"]

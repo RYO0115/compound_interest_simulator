@@ -7,6 +7,7 @@ requires-python = ">=3.11.4"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "pandas>=3.0.2",
+    "playwright>=1.59.0",
     "plotly>=6.7.0",
     "requests>=2.33.1",
     "streamlit>=1.57.0",
