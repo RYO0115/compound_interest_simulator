@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# ポートフォリオ設定ファイル（保存・読み込み機能で生成）
+portfolios_*.json

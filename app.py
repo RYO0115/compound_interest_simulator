@@ -1,7 +1,9 @@
 """複利シミュレーター — Streamlit GUI版（マルチポートフォリオ対応）"""
 
+import json
 import os
 import uuid
+from datetime import datetime
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -111,6 +113,54 @@ def _new_portfolio(label: str) -> dict:
     }
 
 
+def _portfolio_to_save_dict(portfolio: dict) -> dict:
+    """現在のウィジェット値をJSONに書き出す形式へ変換する。"""
+    pid = portfolio["id"]
+    rate_mode_str = str(st.session_state.get(f"rate_mode_{pid}", "手動入力"))
+    if "S&P500" in rate_mode_str:
+        rate_mode_key = "sp500"
+    elif "オルカン" in rate_mode_str:
+        rate_mode_key = "allcountry"
+    else:
+        rate_mode_key = "manual"
+
+    return {
+        "name":                str(st.session_state.get(f"name_{pid}",      portfolio["name"])),
+        "principal":           int(st.session_state.get(f"principal_{pid}", portfolio["_init_principal"])),
+        "rate_mode_key":       rate_mode_key,
+        "annual_rate_pct":     float(st.session_state.get(f"rate_pct_{pid}", portfolio["_init_rate_pct"])),
+        "monthly_contribution":int(st.session_state.get(f"monthly_{pid}",   portfolio["_init_monthly"])),
+        "years":               int(st.session_state.get(f"years_{pid}",     portfolio["_init_years"])),
+    }
+
+
+def _build_portfolio_from_dict(p: dict, fund_data: dict) -> dict:
+    """保存データからセッションステート用のポートフォリオdictを復元する。"""
+    rate_opts = ["手動入力"]
+    if "sp500" in fund_data:
+        rate_opts.append(f"S&P500 実績ベース ({fund_data['sp500']['cagr'] * 100:.2f}%)")
+    if "allcountry" in fund_data:
+        rate_opts.append(f"オルカン 実績ベース ({fund_data['allcountry']['cagr'] * 100:.2f}%)")
+
+    key = p.get("rate_mode_key", "manual")
+    if key == "sp500":
+        mode_idx = next((i for i, o in enumerate(rate_opts) if "S&P500" in o), 0)
+    elif key == "allcountry":
+        mode_idx = next((i for i, o in enumerate(rate_opts) if "オルカン" in o), 0)
+    else:
+        mode_idx = 0
+
+    return {
+        "id":               str(uuid.uuid4()),
+        "name":             p.get("name", "ポートフォリオ"),
+        "_init_principal":  p.get("principal",            1_000_000),
+        "_init_rate_pct":   p.get("annual_rate_pct",      5.0),
+        "_init_monthly":    p.get("monthly_contribution", 30_000),
+        "_init_years":      p.get("years",                20),
+        "_init_rate_mode":  mode_idx,
+    }
+
+
 if "portfolios" not in st.session_state:
     st.session_state.portfolios = [_new_portfolio("ポートフォリオ 1")]
 if "port_counter" not in st.session_state:
@@ -137,6 +187,67 @@ with tab_sim:
                 365: "日複利 (365回/年)",
             }[x],
         )
+
+    # ── 設定の保存・読み込み ──────────────────────────────────
+    with st.expander("💾 設定の保存・読み込み", expanded=False):
+        save_col, load_col = st.columns(2)
+
+        with save_col:
+            st.markdown("**📤 現在の設定を保存**")
+            save_payload = {
+                "version":    "1.0",
+                "saved_at":   datetime.now().isoformat(timespec="seconds"),
+                "portfolios": [
+                    _portfolio_to_save_dict(p)
+                    for p in st.session_state.portfolios
+                ],
+            }
+            save_json = json.dumps(save_payload, ensure_ascii=False, indent=2)
+            filename  = f"portfolios_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            st.download_button(
+                label="⬇️ JSON ファイルをダウンロード",
+                data=save_json,
+                file_name=filename,
+                mime="application/json",
+                use_container_width=True,
+            )
+            st.caption(f"{len(st.session_state.portfolios)} 件のポートフォリオを書き出します。")
+
+        with load_col:
+            st.markdown("**📥 設定を読み込む**")
+            uploaded = st.file_uploader(
+                "JSON ファイルを選択",
+                type=["json"],
+                label_visibility="collapsed",
+                key="portfolio_uploader",
+            )
+            if uploaded is not None:
+                try:
+                    data = json.loads(uploaded.getvalue().decode("utf-8"))
+                    if not isinstance(data.get("portfolios"), list) or not data["portfolios"]:
+                        st.error("有効なポートフォリオデータが見つかりません。")
+                    else:
+                        names_preview = "、".join(
+                            p.get("name", "?") for p in data["portfolios"]
+                        )
+                        st.info(
+                            f"📂 {len(data['portfolios'])} 件を検出:  \n"
+                            f"{names_preview}"
+                        )
+                        if st.button(
+                            "✅ 読み込む（現在の設定を置き換え）",
+                            use_container_width=True,
+                            key="load_confirm",
+                        ):
+                            new_ports = [
+                                _build_portfolio_from_dict(p, fund_data)
+                                for p in data["portfolios"]
+                            ]
+                            st.session_state.portfolios  = new_ports
+                            st.session_state.port_counter = len(new_ports) + 1
+                            st.rerun()
+                except (json.JSONDecodeError, UnicodeDecodeError, KeyError) as e:
+                    st.error(f"読み込みエラー: {e}")
 
     # ── ポートフォリオ追加ボタン ──────────────────────────────
     if st.button("➕ ポートフォリオを追加", type="secondary"):
