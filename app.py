@@ -272,9 +272,10 @@ with tab_sim:
         )
         all_results.append({"cfg": cfg, "rows": rows, "df": pd.DataFrame(rows)})
 
-    # ── グループ積み上げ棒グラフ ─────────────────────────────
+    # ── 積み上げ棒グラフ（ポートフォリオ別・投資額＋利益） ───
+    max_years = max(res["cfg"]["years"] for res in all_results)
     fig = go.Figure()
-    for port_idx, res in enumerate(all_results):
+    for res in all_results:
         cfg = res["cfg"]
         df = res["df"]
         color = cfg["color"]
@@ -287,7 +288,6 @@ with tab_sim:
             x=df["year"],
             y=df["total_contributed"],
             marker_color=light,
-            offsetgroup=port_idx,
             legendgroup=name,
             legendgrouptitle_text=name,
             hovertemplate=(
@@ -296,28 +296,23 @@ with tab_sim:
                 "累計投資額: ¥%{y:,.0f}<extra></extra>"
             ),
         ))
-        # 利益バー（濃色、積み上げ）
+        # 利益バー（濃色）
         fig.add_trace(go.Bar(
             name="利益",
             x=df["year"],
             y=df["gain"],
-            base=df["total_contributed"],
             marker_color=color,
-            offsetgroup=port_idx,
             legendgroup=name,
             hovertemplate=(
                 f"<b>{name}</b><br>"
                 "%{x}年目<br>"
-                "利益: ¥%{customdata:,.0f}<br>"
-                "残高: ¥%{base:,.0f}+¥%{y:,.0f}<extra></extra>"
+                "利益: ¥%{y:,.0f}<extra></extra>"
             ),
-            customdata=df["gain"],
         ))
 
-    max_years = max(res["cfg"]["years"] for res in all_results)
     fig.update_layout(
-        barmode="group",
-        title="ポートフォリオ別 資産推移比較",
+        barmode="stack",
+        title="ポートフォリオ別 資産推移（積み上げ）",
         xaxis_title="年",
         yaxis_title="金額 (円)",
         legend=dict(
@@ -328,8 +323,7 @@ with tab_sim:
         ),
         hovermode="x unified",
         height=520,
-        bargap=0.15,
-        bargroupgap=0.05,
+        bargap=0.2,
     )
     fig.update_xaxes(tickmode="linear", dtick=max(1, max_years // 10))
     st.plotly_chart(fig, use_container_width=True)
